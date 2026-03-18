@@ -3,7 +3,7 @@ import mylib
 logger = logging.getLogger(__name__)
 
 def main():
-    logging.basicConfig(filename='logging-module-test/myapp.log', level=logging.INFO)
+    logging.basicConfig(filename='tests/logging-module-test/myapp.log', level=logging.INFO)
     logger.info('Started')
     mylib.do_something()
     logger.info('Finished')
