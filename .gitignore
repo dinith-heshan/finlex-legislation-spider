@@ -13,3 +13,9 @@ Desktop.ini
 # IDE / Editor
 # -----------------------
 .vscode/
+
+# temp
+spider_development.ipynb
+spider.py
+README.md
+requirements.txt
