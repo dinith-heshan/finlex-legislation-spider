@@ -1,1 +1,5 @@
 2026-03-18 08:20:42,240 [INFO] app: App started
+2026-03-18 22:54:46,647 [INFO] app: log info
+2026-03-18 22:54:46,648 [WARNING] app: log warning
+2026-03-18 22:54:46,648 [ERROR] app: log error
+2026-03-18 22:54:46,648 [CRITICAL] app: log critical
