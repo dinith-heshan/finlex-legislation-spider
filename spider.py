@@ -3,9 +3,12 @@
 import argparse
 import logging
 import random
+import re
 import requests
 import sys
 import time
+
+from __future__ import annotations
 
 from typing import Optional
 
@@ -107,6 +110,19 @@ class ThrottledSession:
         raise RuntimeError(f"Failed to GET {url} after {self.max_retries} attempts") from last_exc
 
 
+# ── Discovery ──────────────────────────────────────────────────────────────────
+
+class LegislationDiscovery:
+    """Finds all individual legislation URLs for a given year."""
+
+    def __init__(self, session: ThrottledSession, year: int) -> None:
+        self.session = session
+        self.year    = year
+        self._url_re = re.compile(
+            rf"(?:^|/)en/legislation/{year}/(\d+)(?:[?#].*)?$"
+        )
+
+
 # ── Spider ─────────────────────────────────────────────────────────────────────
 
 class FinlexSpider:
@@ -123,6 +139,7 @@ class FinlexSpider:
         self.year    = year
         self.limit   = limit
         self.session = ThrottledSession(delay=delay, max_retries=max_retries)
+        self.disc    = LegislationDiscovery(self.session, year)
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
