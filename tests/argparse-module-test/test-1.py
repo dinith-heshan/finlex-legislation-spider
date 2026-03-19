@@ -5,6 +5,8 @@ print(sys.argv)
 
 parser = argparse.ArgumentParser(description="Train ML model")
 
+print(parser._actions)
+
 parser.add_argument("--input", required=True)
 parser.add_argument("--epochs", type=int, default=10)
 parser.add_argument("--lr", type=float, default=0.001)
