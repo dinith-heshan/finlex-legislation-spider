@@ -14,4 +14,4 @@ session.headers.update({
     "Connection": "keep-alive",
 })
 
-r = requests.get("https://httpbin.org/get",  timeout=10)
+r = requests.get("https://www.finlex.fi/en/legislation",  timeout=10)
