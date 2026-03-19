@@ -2,8 +2,10 @@
 
 import argparse
 import logging
+import random
 import requests
 import sys
+import time
 
 from typing import Optional
 
@@ -69,6 +71,40 @@ class ThrottledSession:
             "Accept-Encoding": "gzip, deflate",
             "Connection": "keep-alive",
         })
+
+    # ── internal ──────────────────────────────────────────────────────────────
+
+    def _wait(self) -> None:
+        gap = time.time() - self._last
+        need = self.delay - gap
+        if need > 0:
+            time.sleep(need + random.uniform(0.0, 0.3))
+        self._last = time.time()
+
+    # ── public ────────────────────────────────────────────────────────────────
+
+    def get(self, url: str, **kwargs) -> requests.Response:
+        last_exc: Exception = RuntimeError("Unknown error")
+        for attempt in range(self.max_retries):
+            self._wait()
+            try:
+                r = self.session.get(url, timeout=30, **kwargs)
+                r.raise_for_status()
+                return r
+            except requests.HTTPError as exc:
+                code = exc.response.status_code if exc.response is not None else 0
+                wait = self.backoff ** (attempt + (2 if code == 429 else 1))
+                log.warning("HTTP %s for %s — retry %d/%d in %.1fs",
+                            code, url, attempt + 1, self.max_retries, wait)
+                time.sleep(wait)
+                last_exc = exc
+            except (requests.ConnectionError, requests.Timeout) as exc:
+                wait = self.backoff ** attempt
+                log.warning("Network error (%s) — retry %d/%d in %.1fs",
+                            exc, attempt + 1, self.max_retries, wait)
+                time.sleep(wait)
+                last_exc = exc
+        raise RuntimeError(f"Failed to GET {url} after {self.max_retries} attempts") from last_exc
 
 
 # ── Spider ─────────────────────────────────────────────────────────────────────
