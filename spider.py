@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import requests
 import sys
 
 from typing import Optional
@@ -41,6 +42,36 @@ _TRANSLATION_ABSENT = [
     "käännöstä ei ole",
 ]
 
+# ── HTTP client ────────────────────────────────────────────────────────────────
+
+class ThrottledSession:
+    """requests.Session wrapper with rate limiting and retry logic."""
+
+    def __init__(
+        self,
+        delay: float       = DEFAULT_DELAY,
+        max_retries: int   = DEFAULT_MAX_RETRIES,
+        backoff: float     = DEFAULT_BACKOFF,
+    ) -> None:
+        self.delay       = delay
+        self.max_retries = max_retries
+        self.backoff     = backoff
+        self._last: float = 0.0
+
+        self.session = requests.Session()
+        self.session.headers.update({
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/120.0 Safari/537.36 "
+                "FinlexSpider/1.0"
+            ),
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Encoding": "gzip, deflate, br",
+            "Connection": "keep-alive",
+        })
+
+
 # ── Spider ─────────────────────────────────────────────────────────────────────
 
 class FinlexSpider:
@@ -56,6 +87,7 @@ class FinlexSpider:
     ) -> None:
         self.year    = year
         self.limit   = limit
+        self.session = ThrottledSession(delay=delay, max_retries=max_retries)
 
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
