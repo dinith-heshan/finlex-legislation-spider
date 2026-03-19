@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Dynamic Page</title>
+  <style>
+    body { font-family: Arial; text-align: center; margin-top: 50px; }
+    button { padding: 10px 20px; background: teal; color: white; border: none; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <h1>Welcome!</h1>
+  <p id="message">This is static content.</p>
+  <button id="clickBtn">Click Me!</button>
+
+  <script>
+    const btn = document.getElementById('clickBtn');
+    const msg = document.getElementById('message');
+
+    btn.addEventListener('click', () => {
+      msg.textContent = "Now the page is interactive!";
+      btn.style.background = "orange";
+    });
+  </script>
+</body>
+</html>
