@@ -4,6 +4,8 @@ import argparse
 import logging
 import sys
 
+from typing import Optional
+
 # ── Logging ────────────────────────────────────────────────────────────────────
 
 def _setup_logging(level: str = "INFO") -> None:
@@ -39,6 +41,23 @@ _TRANSLATION_ABSENT = [
     "käännöstä ei ole",
 ]
 
+# ── Spider ─────────────────────────────────────────────────────────────────────
+
+class FinlexSpider:
+    """Orchestrates discovery → scraping → output."""
+
+    def __init__(
+        self,
+        year:        int   = 2026,
+        output_dir:  str   = "./output",
+        delay:       float = DEFAULT_DELAY,
+        max_retries: int   = DEFAULT_MAX_RETRIES,
+        limit:       Optional[int] = None,
+    ) -> None:
+        self.year    = year
+        self.limit   = limit
+
+
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -68,7 +87,13 @@ def main() -> None:
     _setup_logging(args.log_level)
     log.info("Logger configured")
 
-    
+    FinlexSpider(
+        year        = args.year,
+        output_dir  = args.output,
+        delay       = args.delay,
+        max_retries = args.max_retries,
+        limit       = args.limit,
+    )
 
 
 if __name__ == "__main__":
