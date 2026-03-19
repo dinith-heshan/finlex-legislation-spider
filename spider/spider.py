@@ -1,6 +1,23 @@
 #!/usr/bin/env python3
 
 import argparse
+import logging
+import sys
+
+# ── Logging ────────────────────────────────────────────────────────────────────
+
+def _setup_logging(level: str = "INFO") -> None:
+    fmt = "%(asctime)s [%(levelname)-8s] %(message)s"
+    handlers: list[logging.Handler] = [logging.StreamHandler(sys.stdout)]
+    try:
+        handlers.append(logging.FileHandler("spider.log", encoding="utf-8"))
+    except OSError as e:
+        logging.warning("File logging failed: %s", e)
+    logging.basicConfig(level=getattr(logging, level.upper(), logging.INFO),
+                        format=fmt, handlers=handlers)
+
+
+log = logging.getLogger("finlex")
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
@@ -46,6 +63,12 @@ def main() -> None:
                         help="Run unit tests and exit")
 
     args = parser.parse_args()
+
+    # Re-configure logging with chosen level
+    _setup_logging(args.log_level)
+    log.info("Logger configured")
+
+    
 
 
 if __name__ == "__main__":
