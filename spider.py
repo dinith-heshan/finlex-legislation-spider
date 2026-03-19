@@ -10,7 +10,8 @@ import time
 
 from __future__ import annotations
 
-from typing import Optional
+from bs4 import BeautifulSoup
+from typing import Any, Dict, List, Optional
 
 # ── Logging ────────────────────────────────────────────────────────────────────
 
@@ -121,6 +122,171 @@ class LegislationDiscovery:
         self._url_re = re.compile(
             rf"(?:^|/)en/legislation/{year}/(\d+)(?:[?#].*)?$"
         )
+
+    # ── link extraction ───────────────────────────────────────────────────────
+
+    def _links_from_next_data(self, data: Dict) -> List[str]:
+        urls: List[str] = []
+        seen: set = set()
+
+        def _check(val: Any) -> bool:
+            return isinstance(val, str) and self._url_re.search(val) is not None
+
+        for raw in _deep_find(data, _check):
+            full = urljoin(BASE_URL, raw) if not raw.startswith("http") else raw
+            if full not in seen:
+                seen.add(full)
+                urls.append(full)
+        return urls
+
+    def _links_from_html(self, soup: BeautifulSoup) -> List[str]:
+        urls: List[str] = []
+        seen: set = set()
+        for a in soup.find_all("a", href=True):
+            href: str = a["href"]
+            if self._url_re.search(href):
+                full = urljoin(BASE_URL, href)
+                if full not in seen:
+                    seen.add(full)
+                    urls.append(full)
+        return urls
+
+    def _links_from_page(self, soup: BeautifulSoup) -> List[str]:
+        data = _next_data(soup)
+        if data:
+            found = self._links_from_next_data(data)
+            if found:
+                log.debug("  %d links from __NEXT_DATA__", len(found))
+                return found
+        found = self._links_from_html(soup)
+        log.debug("  %d links from HTML", len(found))
+        return found
+
+    # ── year URL discovery ────────────────────────────────────────────────────
+
+    def _year_url(self, soup: BeautifulSoup) -> str:
+        """Return the URL for the given year's legislation listing."""
+        year_str = str(self.year)
+        for a in soup.find_all("a", href=True):
+            href: str = a["href"]
+            text = a.get_text(strip=True)
+            if text == year_str or (year_str in href and "/legislation" in href):
+                return urljoin(BASE_URL, href)
+        # Canonical fallback
+        return f"{LEGISLATION_URL}/{self.year}"
+
+    # ── next-page discovery ───────────────────────────────────────────────────
+
+    def _next_page_url(self, soup: BeautifulSoup, current_url: str) -> Optional[str]:
+        """Return next-page URL if pagination is present, else None."""
+        # Rel-next link tag
+        rel = soup.find("link", rel="next")
+        if rel and rel.get("href"):
+            return urljoin(current_url, rel["href"])
+
+        # <a> with obvious "next" semantics
+        next_re = re.compile(r"^(next|→|>|»|›)$", re.I)
+        for a in soup.find_all("a", href=True):
+            txt   = a.get_text(strip=True)
+            aria  = a.get("aria-label", "")
+            rel_a = a.get("rel", [])
+            if (next_re.match(txt) or "next" in aria.lower()
+                    or "next" in [r.lower() for r in rel_a]):
+                candidate = urljoin(current_url, a["href"])
+                if candidate != current_url:
+                    return candidate
+
+        # Check __NEXT_DATA__ for pagination metadata
+        data = _next_data(soup)
+        if data:
+            def _is_page_url(v: Any) -> bool:
+                return (isinstance(v, str)
+                        and f"/legislation/{self.year}" in v
+                        and "page=" in v)
+            pages = _deep_find(data, _is_page_url)
+            parsed_current = urlparse(current_url)
+            current_page = int(
+                re.search(r"page=(\d+)", parsed_current.query or "").group(1)
+                if "page=" in (parsed_current.query or "") else "1"
+            )
+            for p in pages:
+                m = re.search(r"page=(\d+)", p)
+                if m and int(m.group(1)) == current_page + 1:
+                    return urljoin(BASE_URL, p)
+
+        return None
+
+    # ── Try Next.js JSON data endpoint ────────────────────────────────────────
+
+    def _try_nextjs_json(self, build_id: str, url: str) -> Optional[Dict]:
+        """Try the /_next/data/{buildId}/… endpoint."""
+        parsed = urlparse(url)
+        path   = parsed.path.rstrip("/") + ".json"
+        json_url = f"{BASE_URL}/_next/data/{build_id}{path}"
+        return self.session.get_json(json_url)
+
+    # ── public entry point ────────────────────────────────────────────────────
+
+    def discover(self) -> List[str]:
+        log.info("── Discovery: year %d ──────────────────────────────────────", self.year)
+
+        # 1. Load main listing page
+        log.info("Fetching %s", LEGISLATION_URL)
+        r    = self.session.get(LEGISLATION_URL)
+        soup = BeautifulSoup(r.text, "lxml")
+        bid  = _build_id(soup)
+        if bid:
+            log.debug("Next.js buildId: %s", bid)
+
+        # 2. Locate the year-specific listing URL
+        year_url = self._year_url(soup)
+        log.info("Year listing URL: %s", year_url)
+
+        all_urls: List[str] = []
+        seen: set  = set()
+        page_url: Optional[str] = year_url
+        page_num = 1
+
+        while page_url:
+            log.info("  Listing page %d: %s", page_num, page_url)
+
+            # Try Next.js JSON shortcut first
+            page_soup: Optional[BeautifulSoup] = None
+            if bid:
+                jdata = self._try_nextjs_json(bid, page_url)
+                if jdata:
+                    links = self._links_from_next_data(jdata)
+                    if links:
+                        log.debug("  JSON shortcut yielded %d links", len(links))
+                        for u in links:
+                            if u not in seen:
+                                seen.add(u)
+                                all_urls.append(u)
+                        # Still need soup to find next-page link
+                        r2 = self.session.get(page_url)
+                        page_soup = BeautifulSoup(r2.text, "lxml")
+                        page_url = self._next_page_url(page_soup, page_url)
+                        page_num += 1
+                        continue
+
+            # Fall back to HTML parsing
+            if page_soup is None:
+                rv = self.session.get(page_url)
+                page_soup = BeautifulSoup(rv.text, "lxml")
+
+            links = self._links_from_page(page_soup)
+            log.info("  %d item(s) found on page %d", len(links), page_num)
+
+            for u in links:
+                if u not in seen:
+                    seen.add(u)
+                    all_urls.append(u)
+
+            page_url = self._next_page_url(page_soup, page_url)
+            page_num += 1
+
+        log.info("Discovery complete — %d unique legislation URLs", len(all_urls))
+        return all_urls
 
 
 # ── Spider ─────────────────────────────────────────────────────────────────────
