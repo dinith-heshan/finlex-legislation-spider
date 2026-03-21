@@ -1,6 +1,8 @@
 import re
 
-print(re.findall(r"\d+", "Order ID: 12345"))
+print(re.findall(r"\d*", "Order ID: 12345ACB"))
+print(re.findall(r"\d+", "Order ID: 12345ABC"))
+print(re.findall(r"\d?", "Order ID: 12345ABC"))
 
 print(re.findall(r"\d+", "a1 b22 c333"))
 
